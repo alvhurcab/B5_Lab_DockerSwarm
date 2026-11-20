@@ -1,0 +1,29 @@
+====================================================================
+LAB 4: DESPLIEGUE Y ESCALADO DE SERVICIOS CON DOCKER SWARM
+Alumno: Álvaro Hurtado Caballero
+Grupo: Grupo 1
+====================================================================
+
+1. PREPARACIÓN DEL CLÚSTER SWARM (2 NODOs)
+- Se utilizaron dos máquinas virtuales en Proxmox:
+  * Manager (Leader): alvhurcab-nodo-git (IP: 192.168.130.17)
+  * Worker: alvhurcab-nodo-docker (IP: 192.168.130.145)
+- Se inicializó el Swarm en el nodo manager con "docker swarm init --advertise-addr 192.168.130.17" y se obtuvo el token de worker con "docker swarm join-token worker".
+- Se unió el nodo worker mediante "docker swarm join --token ... 192.168.130.17:2377" y se verificó el estado de ambos nodos con "docker node ls".
+
+2. DESPLIEGUE BÁSICO Y ESCALADO DE SERVICIOS
+- Se creó la carpeta del proyecto "pgpi-g1-hurtadocaballero-alvaro" y se definió el stack inicial en "docker-compose.yml" con la red "webnet", límites de recursos (CPU y memoria), política de reinicio "on-failure" y publicación del puerto 80.
+- Se desplegó el stack ("docker stack deploy -c docker-compose.yml mistack"), se consultó el estado de servicios y tareas ("docker service ls", "docker stack ps mistack") y se escaló el servicio hasta 5 réplicas.
+
+3. MONITORIZACIÓN CON VISUALIZER (docker-compose-v2.yml)
+- Se añadió el servicio "visualizer" (imagen dockersamples/visualizer:stable) en el puerto 8080 montando "/var/run/docker.sock:/var/run/docker.sock" y restringido al nodo manager mediante "placement: constraints: [node.role == manager]".
+- Se verificó la interfaz web en http://192.168.130.17:8080/ comprobando el reparto de réplicas entre el worker y el manager y la ubicación del visualizer en el manager.
+
+4. CONTADOR PERSISTENTE CON REDIS (docker-compose-v3.yml)
+- Se incorporó el servicio "redis" (puerto 6379) restringido al nodo manager, arrancado con "redis-server --appendonly yes" y vinculado al volumen persistente "redisdata:/data".
+- Se desplegó la aplicación web de contador de visitas conectada a Redis sobre la red "webnet" con 5 réplicas, verificando en el navegador (http://192.168.130.17/) el incremento del contador y el balanceo entre contenedores.
+- Se comprobó la persistencia eliminando y volviendo a desplegar el stack ("docker stack rm mistack" y "docker stack deploy -c docker-compose-v3.yml mistack"), confirmando que el volumen "mistack_redisdata" conserva el contador.
+
+5. MANTENIMIENTO Y TOLERANCIA A FALLOS (CAÍDA DE UN WORKER)
+- Se detuvo el servicio Docker en el nodo worker ("sudo systemctl stop docker") y se comprobó en el manager ("docker node ls" y "docker stack ps mistack") cómo el nodo pasaba a estado "Down" mientras los servicios requeridos permanecían operativos.
+- Se volvió a arrancar Docker en el worker ("sudo systemctl start docker") y se verificó que el nodo regresaba a estado "Ready" y que todos los servicios ("mistack_redis", "mistack_visualizer" y "mistack_web" 5/5) estaban activos en "docker service ls".
